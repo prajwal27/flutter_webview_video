@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutterwebviewvideo/features/presentation/components/navigation_controls.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 class ShopPage extends StatefulWidget {
@@ -11,6 +12,7 @@ class ShopPage extends StatefulWidget {
 }
 
 class _ShopPageState extends State<ShopPage> {
+  final globalKey = GlobalKey<ScaffoldState>();
   String _title = 'Himdeve Shop';
   final Completer<WebViewController> _controller =
   Completer<WebViewController>();
@@ -29,8 +31,12 @@ class _ShopPageState extends State<ShopPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: globalKey,
       appBar: AppBar(
-        title: Text('Himdeve Shop'),
+        title: Text(_title),
+        actions: <Widget>[
+          NavigationControls(_controller.future),
+        ],
       ),
       body: _buildWebView(),
       floatingActionButton: _buildShowUrlBtn(),
@@ -44,7 +50,47 @@ class _ShopPageState extends State<ShopPage> {
       onWebViewCreated: (WebViewController webViewController) {
         _controller.complete(webViewController);
       },
+      navigationDelegate: (request) {
+        return _buildNavigationDecision(request);
+      },
+      onPageFinished: (url) {
+        _showPageTitle();
+      },
+      javascriptChannels: <JavascriptChannel>[
+        _createTopBarJsChannel(),
+      ].toSet(),
     );
+  }
+
+  JavascriptChannel _createTopBarJsChannel() {
+    return JavascriptChannel(
+      name: 'TopBarJsChannel',
+      onMessageReceived: (JavascriptMessage message) {
+        String newTitle = message.message;
+        globalKey.currentState.showSnackBar(
+          SnackBar(
+            content: Text(
+              newTitle,
+              style: TextStyle(fontSize: 20),
+            ),
+          ),
+        );
+        if (newTitle.contains('-')) {
+          newTitle = newTitle.substring(0, newTitle.indexOf('-')).trim();
+        }
+
+        setState(() {
+          _title = newTitle;
+        });
+      },
+    );
+  }
+
+  void _showPageTitle() {
+    _controller.future.then((webViewController) {
+      webViewController
+          .evaluateJavascript('TopBarJsChannel.postMessage(document.title);');
+    });
   }
 
   Widget _buildShowUrlBtn() {
@@ -71,5 +117,22 @@ class _ShopPageState extends State<ShopPage> {
         return Container();
       },
     );
+  }
+
+  NavigationDecision _buildNavigationDecision(NavigationRequest request) {
+    if (request.url.contains('my-account')) {
+      globalKey.currentState.showSnackBar(
+        SnackBar(
+          content: Text(
+            'You do not have rights to access My Account page',
+            style: TextStyle(fontSize: 20),
+          ),
+        ),
+      );
+
+      return NavigationDecision.prevent;
+    }
+
+    return NavigationDecision.navigate;
   }
 }
